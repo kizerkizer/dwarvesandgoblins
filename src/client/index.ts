@@ -1,4 +1,4 @@
-import { main } from "./webgpu";
+import { main } from './webgpu';
 
 window.onload = async () => {
     await main();

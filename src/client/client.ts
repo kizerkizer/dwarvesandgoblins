@@ -5,29 +5,38 @@ class Camera {
 }
 
 class Vector2d {
+
     constructor (public x: number, public y: number) {}
 
+    public static Zero = new Vector2d(0, 0);
+    public static Up = new Vector2d(0, -1);
+    public static Down = new Vector2d(0, 1)
+    public static Left = new Vector2d(-1, 0);
+    public static Right = new Vector2d(1, 0);
+
     scale (value: number) {
-        this.x *= value;
-        this.y *= value;
+        return new Vector2d(this.x * value, this.y * value);
     }
 
     add (vector2d: Vector2d) {
-        this.x += vector2d.x;
-        this.y += vector2d.y;
+        return new Vector2d(this.x + vector2d.x, this.y + vector2d.y);
     }
 
     get magnitude () {
         return Math.sqrt(this.x * this.x + this.y * this.y);
     }
 
-    clone () {
-        return new Vector2d(this.x, this.y);
+    normalize () {
+        const magnitude = this.magnitude;
+        if (magnitude > 0) {
+            return new Vector2d(this.x / magnitude, this.y / magnitude);
+        }
+        return new Vector2d(0, 0);
     }
 }
 
 class Player {
-    public velocity: Vector2d;
+    //public velocity: Vector2d;
 
     constructor (public position: Vector2d) {}
 }
@@ -62,7 +71,7 @@ function worldUnitToCellUnit (n: WorldUnit) {
     return n % unitGranularity;
 }
 
-const keys = {
+const keys: Record<string, boolean> = {
     'a': false,
     'b': false,
     'c': false,
@@ -129,6 +138,10 @@ const keys = {
     '.': false,
     '/': false,
     '`': false,
+    'up': false,
+    'down': false,
+    'left': false,
+    'right': false,
 };
 
 function keyHandler (value: boolean): (event: KeyboardEvent) => void {

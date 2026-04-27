@@ -7,19 +7,20 @@ export interface INetworkProfile {
 
 abstract class NetworkProfile implements INetworkProfile {
     constructor (protected rng: RNG) {}
-    nextClientToServerDelay: () => number;
-    nextServerToClientDelay: () => number;
+    abstract nextClientToServerDelay (): number;
+    abstract nextServerToClientDelay (): number;
 }
 
 export class MediocreNetworkProfile extends NetworkProfile {
     private countToNextSpike: number = 0;
     private readonly base: number = 85;
     private readonly packetDropRate: number = 0.05;
+    private delay: () => number;
 
     constructor (rng: RNG) {
         super(rng);
         this.countToNextSpike = rng.nextInt(65, 85);
-        const delay = () => {
+        this.delay = () => {
             let noise = this.rng.nextInt(-7, 5);
             if (this.countToNextSpike === 0) {
                 this.countToNextSpike = this.rng.nextInt(65, 85);
@@ -31,8 +32,14 @@ export class MediocreNetworkProfile extends NetworkProfile {
             }
             return this.base + noise;
         };
-        this.nextClientToServerDelay = delay;
-        this.nextServerToClientDelay = delay;
+    }
+
+    nextClientToServerDelay ()  {
+        return this.delay!();
+    }
+
+    nextServerToClientDelay () {
+        return this.delay!();
     }
 }
 
@@ -40,11 +47,12 @@ export class PoorNetworkProfile extends NetworkProfile {
     private countToNextSpike: number = 0;
     private readonly base: number = 85;
     private readonly packetDropRate: number = 0.15;
+    private delay: () => number;
 
     constructor (rng: RNG) {
         super(rng);
         this.countToNextSpike = rng.nextInt(25, 45);
-        const delay = () => {
+        this.delay = () => {
             let noise = this.rng.nextInt(-7, 5);
             if (this.countToNextSpike === 0) {
                 this.countToNextSpike = this.rng.nextInt(25, 45);
@@ -56,9 +64,16 @@ export class PoorNetworkProfile extends NetworkProfile {
             }
             return this.base + noise;
         };
-        this.nextClientToServerDelay = delay;
-        this.nextServerToClientDelay = delay;
     }
+
+    nextClientToServerDelay ()  {
+        return this.delay!();
+    }
+
+    nextServerToClientDelay () {
+        return this.delay!();
+    }
+
 }
 
 export const mediocreNetworkProfile = new MediocreNetworkProfile(new SeededRNG(0xdeadbeef));
