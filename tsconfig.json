@@ -2,7 +2,7 @@
     "compilerOptions": {
         "target": "ES2020",
         "module": "ESNext",
-        "moduleResolution": "Node",
+        "moduleResolution": "bundler",
         "outDir": "./dist",
         "rootDir": "./src",
         "strict": true,
@@ -10,6 +10,11 @@
         "forceConsistentCasingInFileNames": true,
         "skipLibCheck": true,
         "lib": ["DOM", "ES2020"],
-        "types": ["@webgpu/types"]
+        "types": ["@webgpu/types"],
+        "paths": {
+                "@client/*": ["./src/client/*"],
+                "@server/*": ["./src/server/*"],
+                "@common/*": ["./src/common/*"]
+        }
     }
 }

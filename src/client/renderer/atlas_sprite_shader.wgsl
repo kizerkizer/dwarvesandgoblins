@@ -11,21 +11,17 @@ struct Camera {
 var<uniform> camera: Camera;
 
 @group(1) @binding(0)
-var textureSampler: sampler;
+var atlasSampler: sampler;
 
-@group(2) @binding(0)
-var tex: texture_2d<f32>;
-@group(2) @binding(1)
-var<uniform> texWidth: u32;
-@group(2) @binding(2)
-var<uniform> texHeight: u32;
-@group(2) @binding(3)
-var<uniform> texTileSize: u32;
+@group(1) @binding(1)
+var atlasTex: texture_2d<f32>;
 
 struct VertexIn {
     @builtin(vertex_index) vertexIndex: u32,
     @location(0) pos: vec2<f32>,
-    @location(1) tile: vec2<u32>,
+    @location(1) size: vec2<f32>,
+    @location(2) uv0: vec2<f32>,
+    @location(3) uv1: vec2<f32>,
 };
 
 struct VertexOut {
@@ -35,7 +31,7 @@ struct VertexOut {
 
 @vertex
 fn vs_main (in: VertexIn) -> VertexOut {
-    var corners = array<vec2<f32>, 6>(
+    let corners = array<vec2<f32>, 6>(
         vec2<f32>(-0.5, -0.5),
         vec2<f32>( 0.5, -0.5),
         vec2<f32>( 0.5,  0.5),
@@ -46,28 +42,18 @@ fn vs_main (in: VertexIn) -> VertexOut {
     );
 
     let corner = corners[in.vertexIndex];
-    let spriteSize = vec2<f32>(f32(tileSize), f32(tileSize));
-    let worldPos = in.pos + corner * spriteSize;
+    let worldPos = in.pos + corner * in.size;
     let cameraSpace = (worldPos - camera.cameraPos) * camera.zoom;
     let clip = vec2<f32>(
         cameraSpace.x / (camera.screenSize.x * 0.5),
         -cameraSpace.y / (camera.screenSize.y * 0.5)
     );
 
+    let uv01 = corner + vec2<f32>(0.5, 0.5);
+
     var out: VertexOut;
     out.position = vec4<f32>(clip, 0.0, 1.0);
-
-    let uv01 = corner + vec2<f32>(0.5, 0.5);
-    let tileSizeUV = vec2<f32>(
-        1.0 / f32(atlasWidth),
-        1.0 / f32(atlasHeight),
-    );
-    let uvBase = vec2<f32>(
-        f32(in.tile.x) * tileSizeUV.x,
-        f32(in.tile.y) * tileSizeUV.y
-    );
-    out.uv = uvBase + uv01 * tileSizeUV;
-
+    out.uv = mix(in.uv0, in.uv1, uv01);
     return out;
 }
 
