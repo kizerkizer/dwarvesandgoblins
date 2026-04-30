@@ -1,5 +1,12 @@
-export class Camera {
+export interface ICamera {
+    x: number;
+    y: number;
+    zoom: number;
+}
+
+export class Camera implements ICamera {
     private _data: Float32Array;
+    public static readonly q: number = .25; // chase speed
 
     constructor () {
         this._data = new Float32Array(3);

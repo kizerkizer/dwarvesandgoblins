@@ -1,15 +1,29 @@
 export class CanvasManager {
     private _canvas: HTMLCanvasElement;
+    private _resizeCallbacks: ((canvasManager: CanvasManager) => void)[] = [];
+    private _nonDprWidth: number;
+    private _nonDprHeight: number;
     
     constructor (container: HTMLElement = document.body) {
         this._canvas = this.createCanvas(container);
+        this._nonDprWidth = window.innerWidth;
+        this._nonDprHeight = window.innerHeight;
         window.addEventListener('resize', () => {
             this.updateCanvas();
+            this._resizeCallbacks.forEach(cb => cb(this));
         });
     }
 
     public get canvas () {
         return this._canvas;
+    }
+
+    public get nonDprWidth () {
+        return this._nonDprWidth;
+    }
+    
+    public get nonDprHeight () {
+        return this._nonDprHeight;
     }
 
     private createCanvas (container: HTMLElement) {
@@ -25,9 +39,6 @@ export class CanvasManager {
             left: '0',
         });
         container.appendChild(canvas);
-        window.addEventListener('resize', () => {
-            this.updateCanvas();
-        });
         return canvas;
     }
 
@@ -37,7 +48,13 @@ export class CanvasManager {
         this._canvas.height = window.innerHeight * dpr;
         this._canvas.style.width = `${window.innerWidth}px`;
         this._canvas.style.height = `${window.innerHeight}px`;
+        this._nonDprWidth = window.innerWidth;
+        this._nonDprHeight = window.innerHeight;
         return this._canvas;
+    }
+
+    public onResize (callback: (canvasManager: CanvasManager) => void) {
+        this._resizeCallbacks.push(callback);
     }
 
 }

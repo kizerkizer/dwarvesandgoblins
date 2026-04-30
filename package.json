@@ -1,5 +1,8 @@
 {
   "devDependencies": {
     "@webgpu/types": "^0.1.69"
+  },
+  "dependencies": {
+    "sharp": "^0.34.5"
   }
 }

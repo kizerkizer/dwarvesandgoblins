@@ -1,4 +1,4 @@
-import { Camera } from '@client/renderer/camera';
+import { type ICamera, Camera } from '@client/simulation/camera';
 import { type IWebGPURenderingContext, WebGPURenderingContext } from '@client/renderer/webgpurenderingcontext';
 import shader from './atlas_sprite_shader.wgsl?raw';
 
@@ -17,7 +17,7 @@ export type AtlasRegistrationOptions =  {
 };
 
 export interface IWebGPURenderer {
-    camera: Camera;
+    camera: ICamera;
     registerAtlas (options: AtlasRegistrationOptions): void;
     drawSprite (sprite: ISprite): void;
     render (): void;
@@ -29,6 +29,7 @@ export interface ISprite {
     atlasName: string;
     x: number;
     y: number;
+    layer: number;
     w: number;
     h: number;
     u0: number;
@@ -48,7 +49,8 @@ export class WebGPURenderer implements IWebGPURenderer {
 
     private context: IWebGPURenderingContext;
     private sprites: ISprite[] = [];
-    private _camera: WithBufferAndBindGroup<Camera>;
+    private perLayerSpriteArrays: Map<number, ISprite[]> = new Map();
+    private _camera: WithBufferAndBindGroup<ICamera>;
     private atlasMap: Map<string, AtlasEntry> = new Map();
     private perAtlasSpriteArrays: Map<string, ISprite[]> = new Map();
     private initialized: boolean = false;
@@ -58,31 +60,35 @@ export class WebGPURenderer implements IWebGPURenderer {
     private shaderModule: GPUShaderModule | null = null;
     private pipeline: GPURenderPipeline | null = null;
 
-    private constructor (context: IWebGPURenderingContext) {
+    private constructor (context: IWebGPURenderingContext, camera: ICamera) {
         this.context = context;
-        this._camera = { value: new Camera(), buffer: null!, bindGroup: null! };
+        this._camera = { value: camera, buffer: null!, bindGroup: null! };
     }
 
-    public static async create (context: IWebGPURenderingContext): Promise<IWebGPURenderer> {
-        const renderer = new WebGPURenderer(context);
+    public static async create (context: IWebGPURenderingContext, camera: Camera): Promise<IWebGPURenderer> {
+        const renderer = new WebGPURenderer(context, camera);
         await renderer.initialize();
         return renderer;
     }
 
     public beginFrame (): void {
-        // TODO any per-frame setup goes here
-    }
-
-    public endFrame (): void {
         this.sprites = [];
         for (const atlasName of this.perAtlasSpriteArrays.keys()) {
             this.perAtlasSpriteArrays.set(atlasName, []);
         }
+        // TODO any per-frame setup goes here
+    }
+
+    public endFrame (): void {
         // TODO any per-frame cleanup goes here
     }
 
     public get camera () {
         return this._camera.value;
+    }
+
+    public set camera (value: ICamera) {
+        this._camera.value = value;
     }
 
     public registerAtlas (options: AtlasRegistrationOptions): void {
@@ -211,17 +217,25 @@ export class WebGPURenderer implements IWebGPURenderer {
     public drawSprite(sprite: ISprite) {
         this.sprites.push(sprite);
         const atlasName = sprite.atlasName;
-        const spriteArray = this.perAtlasSpriteArrays.get(atlasName);
-        if (spriteArray === undefined) {
+
+        const spritesPerAtlas = this.perAtlasSpriteArrays.get(atlasName);
+        if (spritesPerAtlas === undefined) {
             throw new Error(`Atlas ${atlasName} not registered`);
         }
-        spriteArray.push(sprite);
-        this.perAtlasSpriteArrays.set(atlasName, spriteArray);
+        spritesPerAtlas.push(sprite);
+        this.perAtlasSpriteArrays.set(atlasName, spritesPerAtlas);
+
+        const layer = sprite.layer;
+        const spritesPerLayer = this.perLayerSpriteArrays.get(layer) || [];
+        spritesPerLayer.push(sprite);
+        this.perLayerSpriteArrays.set(layer, spritesPerLayer);
     }
 
     public render () {
         if (!this.initialized) return;
-        const cameraData = new Float32Array([this.context.width, this.context.height, ...this._camera.value.data, 0, 0, 0]);
+        const { x: cameraX, y: cameraY, zoom } = this._camera.value;
+        //const cameraData = new Float32Array([this.context.width, this.context.height, cameraX, cameraY, zoom, 0]);
+        const cameraData = new Float32Array([this.context.nonDprWidth, this.context.nonDprHeight, cameraX, cameraY, zoom, 0]);
         this.context.device!.queue.writeBuffer(this._camera.buffer, 0, cameraData, 0, cameraData.length);
         const commandEncoder = this.context.device!.createCommandEncoder();
         const pass = commandEncoder.beginRenderPass({
@@ -241,36 +255,41 @@ export class WebGPURenderer implements IWebGPURenderer {
             throw new Error('Too many sprites');
         }
         let instanceOffset = 0;
-        for (const atlasName of this.atlasMap.keys()) {
-            const atlas = this.atlasMap.get(atlasName)!;
-            const spritesForAtlas = this.perAtlasSpriteArrays.get(atlasName)!;
-            if (spritesForAtlas.length === 0) {
-                continue;
-            }
-            const instanceData: ArrayBuffer = new ArrayBuffer(spritesForAtlas.length * 8 * 4);
-            const view = new DataView(instanceData);
-            for (let i = 0; i < spritesForAtlas.length; i++) {
-                const sprite = spritesForAtlas[i];
-                const base = i * 8 * 4;
-                view.setFloat32(base + 0, sprite.x, true);
-                view.setFloat32(base + 4, sprite.y, true);
-                view.setFloat32(base + 8, sprite.w, true);
-                view.setFloat32(base + 12, sprite.h, true);
-                view.setFloat32(base + 16, sprite.u0 / atlas.width, true);
-                view.setFloat32(base + 20, sprite.v0 / atlas.height, true);
-                view.setFloat32(base + 24, sprite.u1 / atlas.width, true);
-                view.setFloat32(base + 28, sprite.v1 / atlas.height, true);
-            }
+        const sortedLayers = Array.from(this.perLayerSpriteArrays.keys())
+            .sort((a, b) => a - b);
+        for (const layer of sortedLayers) {
+            for (const atlasName of this.atlasMap.keys()) {
+                const atlas = this.atlasMap.get(atlasName)!;
+                const spritesForAtlas = this.perAtlasSpriteArrays
+                    .get(atlasName)!.filter(sprite => sprite.layer === layer);
+                if (spritesForAtlas.length === 0) {
+                    continue;
+                }
+                const instanceData: ArrayBuffer = new ArrayBuffer(spritesForAtlas.length * 8 * 4);
+                const view = new DataView(instanceData);
+                for (let i = 0; i < spritesForAtlas.length; i++) {
+                    const sprite = spritesForAtlas[i];
+                    const base = i * 8 * 4;
+                    view.setFloat32(base + 0, sprite.x, true);
+                    view.setFloat32(base + 4, sprite.y, true);
+                    view.setFloat32(base + 8, sprite.w, true);
+                    view.setFloat32(base + 12, sprite.h, true);
+                    view.setFloat32(base + 16, sprite.u0 / atlas.width, true);
+                    view.setFloat32(base + 20, sprite.v0 / atlas.height, true);
+                    view.setFloat32(base + 24, sprite.u1 / atlas.width, true);
+                    view.setFloat32(base + 28, sprite.v1 / atlas.height, true);
+                }
 
-            // Guaranteed that instanceData.byteLength <= 
-            // Buffer(spritesForAtlas).byteLength since each instanceData
-            // corresponds to subset of spritesForAtlas
-            this.context.device!.queue.writeBuffer(this.spritesInstanceBuffer!,
-                instanceOffset, instanceData, 0, instanceData.byteLength);
-            pass.setVertexBuffer(0, this.spritesInstanceBuffer!, instanceOffset);
-            pass.setBindGroup(1, atlas.bindGroup);
-            pass.draw(6, spritesForAtlas.length, 0, 0);
-            instanceOffset += instanceData.byteLength;
+                // Guaranteed that instanceData.byteLength <= 
+                // Buffer(spritesForAtlas).byteLength since each instanceData
+                // corresponds to subset of spritesForAtlas
+                this.context.device!.queue.writeBuffer(this.spritesInstanceBuffer!,
+                    instanceOffset, instanceData, 0, instanceData.byteLength);
+                pass.setVertexBuffer(0, this.spritesInstanceBuffer!, instanceOffset);
+                pass.setBindGroup(1, atlas.bindGroup);
+                pass.draw(6, spritesForAtlas.length, 0, 0);
+                instanceOffset += instanceData.byteLength;
+            }
         }
         pass.end();
         this.context.device!.queue.submit([commandEncoder.finish()]);

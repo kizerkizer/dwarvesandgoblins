@@ -1,4 +1,8 @@
 export { Vector2 } from "./Vector2";
+export { Rect } from "./Rect";
+export { LineSegment } from "./LineSegment";
+
+export const TAU = Math.PI * 2;
 
 /**
  * Returns the linear interpolation between start and end by t, clamped to the range [start, end].
@@ -39,4 +43,38 @@ export function wrap (value: number, min: number, max: number) {
         wrappedValue += range;
     }
     return wrappedValue + min;
+}
+
+export enum Direction8 {
+    North = 'N',
+    Northeast = 'NE',
+    East = 'E',
+    Southeast = 'SE',
+    South = 'S',
+    Southwest = 'SW',
+    West = 'W',
+    Northwest = 'NW',
+}
+
+export function angleToDirection8 (angle: number): Direction8 {
+    type ZeroThroughSeven = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+    const octant: ZeroThroughSeven = Math.round(angle / (TAU / 8)) % 8 as ZeroThroughSeven;
+    switch (octant) {
+        case 0: return Direction8.East;
+        case 1: return Direction8.Southeast;
+        case 2: return Direction8.South;
+        case 3: return Direction8.Southwest;
+        case 4: return Direction8.West;
+        case 5: return Direction8.Northwest;
+        case 6: return Direction8.North;
+        case 7: return Direction8.Northeast;
+    }
+}
+
+export function radToDeg (rad: number) {
+    return rad * 180 / Math.PI;
+}
+
+export function degToRad (deg: number) {
+    return deg * Math.PI / 180;
 }

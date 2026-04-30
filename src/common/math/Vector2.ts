@@ -12,6 +12,14 @@ export class Vector2 {
         return new Vector2(Math.cos(angle) * magnitude, Math.sin(angle) * magnitude);
     }
 
+    public static lerp (start: Vector2, end: Vector2, t: number) {
+        return new Vector2(start.x + (end.x - start.x) * t, start.y + (end.y - start.y) * t);
+    }
+
+    toString () {
+        return `<${this._x}, ${this._y})>`;
+    }
+
     [Symbol.iterator]() {
         let index = 0;
         const x = this._x,
@@ -69,8 +77,17 @@ export class Vector2 {
         return Math.sqrt(this._x * this._x + this._y * this._y);
     }
 
+    distanceTo (vector2d: Vector2) {
+        return vector2d.subtract(this).magnitude;
+    }
+
     get angle () {
         return Math.atan2(this._y, this._x);
+    }
+
+    get fullAngle () {
+        const angle = this.angle;
+        return angle >= 0 ? angle : (Math.PI * 2 + angle);
     }
 
     normalize () {

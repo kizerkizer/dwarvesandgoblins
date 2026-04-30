@@ -71,6 +71,14 @@ export const keys: Record<string, boolean> = {
     'right': false,
 };
 
+export const wheel = {
+    hasChanged: false,
+    deltaX: 0,
+    deltaY: 0,
+    deltaZ: 0,
+    deltaMode: 0,
+};
+
 function keyHandler (value: boolean): (event: KeyboardEvent) => void {
     return (event: KeyboardEvent) => {
         if (event.shiftKey) {
@@ -101,6 +109,14 @@ function keyHandler (value: boolean): (event: KeyboardEvent) => void {
     };
 }
 
-document.body.addEventListener('keydown', keyHandler(true));
-
-document.body.addEventListener('keyup', keyHandler(false));
+export function attachEventListeners () {
+    document.body.addEventListener('keydown', keyHandler(true));
+    document.body.addEventListener('keyup', keyHandler(false));
+    document.body.addEventListener('wheel', (event: WheelEvent) => {
+        wheel.deltaX = event.deltaX;
+        wheel.deltaY = event.deltaY;
+        wheel.deltaZ = event.deltaZ;
+        wheel.deltaMode = event.deltaMode;
+        wheel.hasChanged = true;
+    });
+}

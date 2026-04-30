@@ -1,4 +1,4 @@
-import { main } from './renderer/main';
+import { main } from './main';
 
 window.onload = async () => {
     await main();
