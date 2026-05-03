@@ -1,4 +1,4 @@
-export { Vector2 } from "./Vector2";
+export { Vector2, vec2 } from "./Vector2";
 export { Rect } from "./Rect";
 export { LineSegment } from "./LineSegment";
 
@@ -77,4 +77,8 @@ export function radToDeg (rad: number) {
 
 export function degToRad (deg: number) {
     return deg * Math.PI / 180;
+}
+
+export function toFullAngle (angle: number) {
+    return wrap(angle, 0, TAU);
 }

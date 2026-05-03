@@ -1,4 +1,4 @@
-import { CanvasManager } from "@client/renderer/canvasmanager";
+import { CanvasManager } from "@client/presentation/renderer/canvasmanager";
 
 export interface IWebGPURenderingContext {
     cvs: HTMLCanvasElement;
@@ -16,8 +16,6 @@ export class WebGPURenderingContext implements IWebGPURenderingContext {
     private canvasManager: CanvasManager;
     private _cvs: HTMLCanvasElement;
     private _ctx: GPUCanvasContext;
-    private _width: number; // TODO get rid of these and just compute from canvasManager.canvas.width/height
-    private _height: number; // TODO get rid of these and just compute from canvasManager.canvas.width/height
 
     private _device: GPUDevice | null = null;
     private _format: GPUTextureFormat | null = null;
@@ -25,8 +23,6 @@ export class WebGPURenderingContext implements IWebGPURenderingContext {
     private constructor (canvasManager: CanvasManager) {
         this.canvasManager = canvasManager;
         this._cvs = canvasManager.canvas;
-        this._width = canvasManager.canvas.width;
-        this._height = canvasManager.canvas.height;
         this._ctx = this._cvs.getContext('webgpu') as GPUCanvasContext;
         canvasManager.onResize(() => this.onResize());
     }
@@ -39,33 +35,33 @@ export class WebGPURenderingContext implements IWebGPURenderingContext {
         return this.canvasManager.nonDprHeight;
     }
 
-    public static async create (canvasManager: CanvasManager): Promise<IWebGPURenderingContext | undefined> {
+    public static async create (canvasManager: CanvasManager): Promise<IWebGPURenderingContext> {
         const context = new WebGPURenderingContext(canvasManager);
+        await context.initialize();
+        return context;
+    }
+
+    private async initialize () {
         let adapter: GPUAdapter | null = null;
         try {
             adapter = await navigator.gpu.requestAdapter();
         } catch (e) {
-            console.error('Failed to request WebGPU adapter:', e);
-            return;
+            throw new Error('Error while requesting WebGPU adapter: ' + (e instanceof Error ? e.message : String(e)));
         }
         if (!adapter) {
-            console.error('No WebGPU adapter found');
-            return;
+            throw new Error('No WebGPU adapter found');
         }
-        context._device = await adapter.requestDevice();
-        context._format = navigator.gpu.getPreferredCanvasFormat();
-        context._ctx.configure({
-            device: context._device,
-            format: context._format,
+        this._device = await adapter.requestDevice();
+        this._format = navigator.gpu.getPreferredCanvasFormat();
+        this._ctx.configure({
+            device: this._device,
+            format: this._format,
             alphaMode: 'premultiplied',
         });
-        return context;
     }
 
     // Called after CanvasManager resizes the canvas
     private onResize () {
-        this._width = this._cvs.width;
-        this._height = this._cvs.height;
         if (this._device && this._format) {
             this._ctx.configure({
                 device: this._device,
@@ -84,11 +80,11 @@ export class WebGPURenderingContext implements IWebGPURenderingContext {
     }
 
     public get width () {
-        return this._width;
+        return this.canvasManager.canvas.width;
     }
 
     public get height () {
-        return this._height;
+        return this.canvasManager.canvas.height;
     }
 
     public get device () {

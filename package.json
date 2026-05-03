@@ -1,8 +1,11 @@
 {
   "devDependencies": {
+    "@types/bun": "^1.3.13",
     "@webgpu/types": "^0.1.69"
   },
   "dependencies": {
+    "@webtransport-bun/webtransport": "^0.3.0",
+    "dotenv": "^17.4.2",
     "sharp": "^0.34.5"
   }
 }

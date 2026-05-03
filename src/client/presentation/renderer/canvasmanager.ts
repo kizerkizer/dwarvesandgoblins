@@ -34,7 +34,7 @@ export class CanvasManager {
         canvas.style.width = `${window.innerWidth}px`;
         canvas.style.height = `${window.innerHeight}px`;
         Object.assign(canvas.style, {
-            position: 'fixed',
+            position: 'absolute',
             top: '0',
             left: '0',
         });

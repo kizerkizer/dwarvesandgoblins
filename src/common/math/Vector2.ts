@@ -101,4 +101,12 @@ export class Vector2 {
     clone () {
         return new Vector2(this._x, this._y);
     }
+
+    equals (other: Vector2) {
+        return this._x === other._x && this._y === other._y;
+    }
+}
+
+export function vec2 (x: number, y: number) {
+    return new Vector2(x, y);
 }

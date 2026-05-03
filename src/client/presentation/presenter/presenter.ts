@@ -1,15 +1,16 @@
-import { type IWebGPURenderer, WebGPURenderer } from "@client/renderer/webgpurenderer";
+import { type IWebGPURenderer, WebGPURenderer } from "@client/presentation/renderer/webgpurenderer";
 import { Rect, Vector2, angleToDirection8, lerp } from "@common/math";
-import { type IEntity, Game, World } from "@client/simulation/game";
-import { PlayStatus, PlayDirection, type IRunningAnimation, type AnimationOptions, type AnimationRegistrationOptions, Animator } from "@client/presentation/animator";
+import { type IEntity, Game } from "@client/simulation/game";
+import { PlayStatus, PlayDirection, type IAnimationOptions, type IClipOptions, Animator } from "@client/presentation/animator/animator";
+import { type IRunningAnimation } from "@client/presentation/animator/runninganimation";
 import { Transition, transition } from "@client/presentation/transition";
 import { type IRenderable } from "@client/IRenderable";
-import { type ICamera, Camera } from "@client/simulation/camera";
+import { type ICamera, Camera } from "@client/presentation/presenter/camera";
 import { IUpdatable } from "@client/IUpdatable";
 import * as input from "@client/input";
 import { clamp } from "@common/math";
 
-export class VisualEntity {
+class VisualEntity {
     private _position: Transition<Vector2>;
     private _animation: IRunningAnimation | null;
     private _simulationEntityId: number;
@@ -100,21 +101,26 @@ class VisualCamera implements ICamera {
 export class Presenter implements IRenderable, IUpdatable {
 
     private entityToVisual: Map<number, VisualEntity> = new Map();
-    private visualCamera: VisualCamera;
-    private camera: ICamera;
+    private _camera: ICamera;
 
     constructor (private game: Game, private renderer: IWebGPURenderer, private animator: Animator) {
-        this.visualCamera = new VisualCamera(this.game.camera);
-        this.camera = new Camera();
-        this.camera.x = this.game.world.origin.x;
-        this.camera.y = this.game.world.origin.y;
-        this.camera.zoom = 1;
+        this._camera = new Camera(
+            this.game.world.origin.x,
+            this.game.world.origin.y,
+            this.renderer.context.nonDprWidth,
+            this.renderer.context.nonDprHeight,
+            1
+        );
+        this.renderer.camera = this._camera;
+    }
+
+    public get camera () {
+        return this._camera;
     }
 
     private createNewVisualForEntity (entity: IEntity): VisualEntity {
         const animation = this.animator.addAnimation({
-            name: `animation_for_entity_${entity.id}`, // TODO
-            registrationName: 'goblin.s', // TODO
+            clipName: entity.isPlayer ? 'player.s' : 'd3', // TODO
             position: entity.position,
             size: entity.size,
             layer: 1,
@@ -132,25 +138,23 @@ export class Presenter implements IRenderable, IUpdatable {
         }
         return visual;
     }
-
-    private updateVisualCameraFromCamera (visualCamera: VisualCamera, camera: ICamera, progress: number) {
-        const positionTransition = visualCamera.positionTransition;
-        visualCamera.renderPosition = Vector2.lerp(positionTransition.from, positionTransition.to, progress);
-        visualCamera.renderPosition = new Vector2(Math.round(visualCamera.renderPosition.x), Math.round(visualCamera.renderPosition.y));
-        const zoomTransition = visualCamera.zoomTransition;
-        visualCamera.zoom = lerp(zoomTransition.from, zoomTransition.to, progress);
-    }
     
     private updateVisualFromEntity (visual: VisualEntity, entity: IEntity, progress: number) {
         const position = visual.position;
         visual.renderPosition = Vector2.lerp(position.from, position.to, progress);
         const direction = angleToDirection8(entity.orientation);
-        const registrationName = `goblin.${direction.toLowerCase()}`;
-        visual.animation!.registrationName = registrationName;
+        console.log(direction);
+        if (entity.isPlayer) {
+            visual.animation!.swapClipKeepFrame(`player.${direction.toLowerCase()}`);
+        }
         if (entity.status === 'idle') {
             visual.animation!.playStatus = PlayStatus.Stopped;
         } else {
             visual.animation!.playStatus = PlayStatus.Playing;
+        }
+        const movementAngle = entity.movementDirection.fullAngle;
+        if (Math.abs(movementAngle - entity.orientation) > Math.PI * 0.8 && Math.abs(movementAngle - entity.orientation) < Math.PI * 1.2) {
+            visual.animation!.playDirection = PlayDirection.Reverse;
         }
     }
 
@@ -165,42 +169,22 @@ export class Presenter implements IRenderable, IUpdatable {
     private updateCamera (dtMs: number) {
         const dtSec = dtMs / 1000;
         const lambda = 2.5;
-        const q = lambda * dtSec;//1 - Math.exp(-lambda * dtSec);
-        const playerPosition = this.getVisualForEntity(this.game.player).renderPosition;
-        const delta = new Vector2(q * (playerPosition.x - this.camera.x), q * (playerPosition.y - this.camera.y));
-        this.camera.x += delta.x;
-        this.camera.y += delta.y;
-        //const screenError = delta.magnitude * this.camera.zoom;
-        /*if (screenError < 0.25) {
-            this.camera.x = playerPosition.x;
-            this.camera.y = playerPosition.y;
-        }*/
+        const q = lambda * dtSec; // 1 - Math.exp(-lambda * dtSec);
+        const target = this.getVisualForEntity(this.game.player).renderPosition;
+        const delta = new Vector2(q * (target.x - this._camera.x), q * (target.y - this._camera.y));
+        this._camera.x += delta.x;
+        this._camera.y += delta.y;
         if (input.wheel.hasChanged) {
             const zoomChange = 1 - input.wheel.deltaY * 0.001;
-            this.camera.zoom *= zoomChange;
-            this.camera.zoom = clamp(this.camera.zoom, 0.2, 2);
+            this._camera.zoom *= zoomChange;
+            this._camera.zoom = clamp(this._camera.zoom, 0.2, 2);
             input.wheel.hasChanged = false;
         }
     }
 
-    render (dt: number, progress: number) {
-
-        //this.updateVisualCameraFromCamera(this.visualCamera, this.game.camera, progress);
-
-
-        const entities = this.game.entities;
-        for (const entity of entities) {
-            let visual = this.getVisualForEntity(entity);
-            this.updateVisualFromEntity(visual, entity, progress);
-        }
-
-        this.updateCamera(dt);
-
+    private renderTilemap () {
+        // TODO This should exist in TileMapRenderer or something
         const origin = this.game.world.origin;
-        this.renderer.camera = this.camera;//this.visualCamera;
-        this.renderer.beginFrame();
-        // TODO delete
-        // This should exist in TileMapRenderer or something
         const tl = origin.clone().subtract(new Vector2(2048, 2048));
         const tiles = this.game!.world.getTilesInRect(new Rect(tl, tl.add(new Vector2(4096, 4096))));
         for (const tile of tiles) {
@@ -219,6 +203,20 @@ export class Presenter implements IRenderable, IUpdatable {
                 v1: v0 * 256 + 256,
             });
         }
+    }
+
+    render (dt: number, progress: number) {
+        const entities = this.game.entities;
+        for (const entity of entities) {
+            let visual = this.getVisualForEntity(entity);
+            this.updateVisualFromEntity(visual, entity, progress);
+        }
+
+        this.updateCamera(dt);
+
+        this.renderer.beginFrame();
+
+        this.renderTilemap();
 
         this.animator.render(dt, progress);
 

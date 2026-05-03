@@ -1,5 +1,5 @@
-import { type ICamera, Camera } from '@client/simulation/camera';
-import { type IWebGPURenderingContext, WebGPURenderingContext } from '@client/renderer/webgpurenderingcontext';
+import { type ICamera, Camera } from '@client/presentation/presenter/camera';
+import { type IWebGPURenderingContext, WebGPURenderingContext } from '@client/presentation/renderer/webgpurenderingcontext';
 import shader from './atlas_sprite_shader.wgsl?raw';
 
 interface AtlasEntry {
@@ -23,6 +23,7 @@ export interface IWebGPURenderer {
     render (): void;
     beginFrame(): void;
     endFrame(): void;
+    context: IWebGPURenderingContext;
 }
 
 export interface ISprite {
@@ -45,12 +46,13 @@ type WithBufferAndBindGroup<T> = {
 }
 
 export class WebGPURenderer implements IWebGPURenderer {
+
     public static readonly MAX_SPRITES: number = 10_000;
 
-    private context: IWebGPURenderingContext;
+    private _context: IWebGPURenderingContext;
     private sprites: ISprite[] = [];
     private perLayerSpriteArrays: Map<number, ISprite[]> = new Map();
-    private _camera: WithBufferAndBindGroup<ICamera>;
+    private _camera: WithBufferAndBindGroup<ICamera> = { value: null as unknown as ICamera, buffer: null as any, bindGroup: null as any };
     private atlasMap: Map<string, AtlasEntry> = new Map();
     private perAtlasSpriteArrays: Map<string, ISprite[]> = new Map();
     private initialized: boolean = false;
@@ -60,15 +62,18 @@ export class WebGPURenderer implements IWebGPURenderer {
     private shaderModule: GPUShaderModule | null = null;
     private pipeline: GPURenderPipeline | null = null;
 
-    private constructor (context: IWebGPURenderingContext, camera: ICamera) {
-        this.context = context;
-        this._camera = { value: camera, buffer: null!, bindGroup: null! };
+    private constructor (context: IWebGPURenderingContext) {
+        this._context = context;
     }
 
-    public static async create (context: IWebGPURenderingContext, camera: Camera): Promise<IWebGPURenderer> {
-        const renderer = new WebGPURenderer(context, camera);
+    public static async create (context: IWebGPURenderingContext): Promise<IWebGPURenderer> {
+        const renderer = new WebGPURenderer(context);
         await renderer.initialize();
         return renderer;
+    }
+
+    get context () {
+        return this._context;
     }
 
     public beginFrame (): void {
@@ -91,24 +96,42 @@ export class WebGPURenderer implements IWebGPURenderer {
         this._camera.value = value;
     }
 
-    public registerAtlas (options: AtlasRegistrationOptions): void {
-        if (!this.initialized) {
-            throw new Error('Renderer not initialized');
+    private addAtlas (atlas: AtlasEntry): void {
+        this.atlasMap.set(atlas.atlasName, atlas);
+        let spriteArray = this.perAtlasSpriteArrays.get(atlas.atlasName);
+        if (spriteArray === undefined) {
+            this.perAtlasSpriteArrays.set(atlas.atlasName, []); // new spriteArray
         }
-        const { atlasName, imageBitmap } = options;
+    }
+
+    private createAndCopyTexture (imageBitmap: ImageBitmap): GPUTexture {
         const width = imageBitmap.width,
             height = imageBitmap.height;
-        const texture = this.context.device!.createTexture({
+        const texture = this._context.device!.createTexture({
             size: [width, height, 1],
             format: 'rgba8unorm',
             usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
         });
-        this.context.device!.queue.copyExternalImageToTexture(
+        this._context.device!.queue.copyExternalImageToTexture(
             { source: imageBitmap },
             { texture },
             [width, height]
         );
-        const bindGroup = this.context.device!.createBindGroup({
+        return texture;
+    }
+
+    public registerAtlas (options: AtlasRegistrationOptions): void {
+        if (!this.initialized) {
+            throw new Error('Renderer not initialized');
+        }
+        if (this._camera.value === null) {
+            throw new Error('Camera not set');
+        }
+        const { atlasName, imageBitmap } = options;
+        const width = imageBitmap.width,
+            height = imageBitmap.height;
+        const texture = this.createAndCopyTexture(imageBitmap);
+        const bindGroup = this._context.device!.createBindGroup({
             layout: this.pipeline!.getBindGroupLayout(1),
             entries: [
                 { binding: 0, resource: this.sampler! },
@@ -123,15 +146,10 @@ export class WebGPURenderer implements IWebGPURenderer {
             texture,
             bindGroup,
         };
-        this.atlasMap.set(atlasName, atlas);
-        let spriteArray = this.perAtlasSpriteArrays.get(atlasName);
-        if (spriteArray === undefined) {
-            this.perAtlasSpriteArrays.set(atlasName, []); // new spriteArray
-        }
+        this.addAtlas(atlas);
     }
 
-    private async initialize() {
-        this.shaderModule = this.context.device!.createShaderModule({ code: shader });
+    private initializePipeline () {
         const instanceBufferLayout: GPUVertexBufferLayout = {
             arrayStride: 8 * 4, // pos(2) + size(2) + uv0(2) + uv1(2)
             stepMode: 'instance',
@@ -158,18 +176,18 @@ export class WebGPURenderer implements IWebGPURenderer {
                 },
             ],
         };
-        this.pipeline = this.context.device!.createRenderPipeline({
+        this.pipeline = this._context.device!.createRenderPipeline({
             layout: 'auto',
             vertex: {
-                module: this.shaderModule,
+                module: this.shaderModule!,
                 entryPoint: 'vs_main',
                 buffers: [instanceBufferLayout],
             },
             fragment: {
-                module: this.shaderModule,
+                module: this.shaderModule!,
                 entryPoint: 'fs_main',
                 targets: [{
-                    format: this.context.format!,
+                    format: this._context.format!,
                     blend: {
                         color: {
                             srcFactor: 'src-alpha',
@@ -188,19 +206,14 @@ export class WebGPURenderer implements IWebGPURenderer {
                 topology: 'triangle-list',
             },
         });
-        this.spritesInstanceBuffer = this.context.device!.createBuffer({
-            size: WebGPURenderer.MAX_SPRITES * 8 * 4,
-            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-        });
-        this.sampler = this.context.device!.createSampler({
-            magFilter: "nearest",
-            minFilter: "nearest",
-        });
-        this._camera.buffer = this.context.device!.createBuffer({
+    }
+
+    private initializeCamera () {
+        this._camera.buffer = this._context.device!.createBuffer({
             size: 8 * 4,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
-        this._camera.bindGroup = this.context.device!.createBindGroup({
+        this._camera.bindGroup = this._context.device!.createBindGroup({
             layout: this.pipeline!.getBindGroupLayout(0),
             entries: [
                 {
@@ -211,37 +224,43 @@ export class WebGPURenderer implements IWebGPURenderer {
                 },
             ],
         });
+    }
+
+    private async initialize () {
+        this.shaderModule = this._context.device!.createShaderModule({ code: shader });
+        this.spritesInstanceBuffer = this._context.device!.createBuffer({
+            size: WebGPURenderer.MAX_SPRITES * 8 * 4,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        });
+        this.sampler = this._context.device!.createSampler({
+            magFilter: "nearest",
+            minFilter: "nearest",
+        });
+        this.initializePipeline();
+        this.initializeCamera();
         this.initialized = true;
     }
 
-    public drawSprite(sprite: ISprite) {
+    public drawSprite (sprite: ISprite) {
         this.sprites.push(sprite);
         const atlasName = sprite.atlasName;
-
         const spritesPerAtlas = this.perAtlasSpriteArrays.get(atlasName);
         if (spritesPerAtlas === undefined) {
             throw new Error(`Atlas ${atlasName} not registered`);
         }
         spritesPerAtlas.push(sprite);
         this.perAtlasSpriteArrays.set(atlasName, spritesPerAtlas);
-
         const layer = sprite.layer;
         const spritesPerLayer = this.perLayerSpriteArrays.get(layer) || [];
         spritesPerLayer.push(sprite);
         this.perLayerSpriteArrays.set(layer, spritesPerLayer);
     }
 
-    public render () {
-        if (!this.initialized) return;
-        const { x: cameraX, y: cameraY, zoom } = this._camera.value;
-        //const cameraData = new Float32Array([this.context.width, this.context.height, cameraX, cameraY, zoom, 0]);
-        const cameraData = new Float32Array([this.context.nonDprWidth, this.context.nonDprHeight, cameraX, cameraY, zoom, 0]);
-        this.context.device!.queue.writeBuffer(this._camera.buffer, 0, cameraData, 0, cameraData.length);
-        const commandEncoder = this.context.device!.createCommandEncoder();
+    private initializePass (commandEncoder: GPUCommandEncoder): GPURenderPassEncoder {
         const pass = commandEncoder.beginRenderPass({
             colorAttachments: [
                 {
-                    view: this.context.ctx.getCurrentTexture().createView(),
+                    view: this._context.ctx.getCurrentTexture().createView(),
                     clearValue: { r: 0, g: 0, b: 0, a: 1 },
                     loadOp: 'clear',
                     storeOp: 'store',
@@ -251,6 +270,21 @@ export class WebGPURenderer implements IWebGPURenderer {
         pass.setPipeline(this.pipeline!);
         pass.setVertexBuffer(0, this.spritesInstanceBuffer!);
         pass.setBindGroup(0, this._camera.bindGroup);
+        return pass;
+    }
+
+    public render () {
+        if (!this.initialized) {
+            throw new Error('Renderer not initialized');
+        }
+        if (this._camera.value === null) {
+            throw new Error('Camera not set');
+        }
+        const { x: cameraX, y: cameraY, width: cameraWidth, height: cameraHeight, zoom } = this._camera.value;
+        const cameraData = new Float32Array([cameraWidth, cameraHeight, cameraX, cameraY, zoom, 0]);
+        this._context.device!.queue.writeBuffer(this._camera.buffer, 0, cameraData, 0, cameraData.length);
+        const commandEncoder = this._context.device!.createCommandEncoder();
+        const pass = this.initializePass(commandEncoder);
         if (this.sprites.length > WebGPURenderer.MAX_SPRITES) {
             throw new Error('Too many sprites');
         }
@@ -283,7 +317,7 @@ export class WebGPURenderer implements IWebGPURenderer {
                 // Guaranteed that instanceData.byteLength <= 
                 // Buffer(spritesForAtlas).byteLength since each instanceData
                 // corresponds to subset of spritesForAtlas
-                this.context.device!.queue.writeBuffer(this.spritesInstanceBuffer!,
+                this._context.device!.queue.writeBuffer(this.spritesInstanceBuffer!,
                     instanceOffset, instanceData, 0, instanceData.byteLength);
                 pass.setVertexBuffer(0, this.spritesInstanceBuffer!, instanceOffset);
                 pass.setBindGroup(1, atlas.bindGroup);
@@ -292,7 +326,7 @@ export class WebGPURenderer implements IWebGPURenderer {
             }
         }
         pass.end();
-        this.context.device!.queue.submit([commandEncoder.finish()]);
+        this._context.device!.queue.submit([commandEncoder.finish()]);
     }
 
 }
