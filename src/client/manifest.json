@@ -1,0 +1,41 @@
+{
+    "entities": [{
+        "name": "player",
+        "animations": [
+            {
+                "name": "walk",
+                "rows": 5,
+                "cols": 5,
+                "frameW": 256,
+                "frameH": 256,
+                "fps": 24,
+                "loop": true,
+                "names": ["n", "e", "s", "w", "sw", "nw", "ne", "se"]
+            },
+            {
+                "name": "attack",
+                "rows": 5,
+                "cols": 7,
+                "frameW": 256,
+                "frameH": 256,
+                "fps": 24,
+                "loop": true,
+                "names": ["n", "e", "s", "w", "sw", "nw", "ne", "se"]
+            }
+        ]
+    }, {
+        "name": "goblin",
+        "animations": [
+            {
+                "name": "walk",
+                "rows": 5,
+                "cols": 5,
+                "frameW": 256,
+                "frameH": 256,
+                "fps": 24,
+                "loop": true,
+                "names": ["n", "e", "s", "w", "sw", "nw", "ne", "se"]
+            }
+        ]
+    }]
+}

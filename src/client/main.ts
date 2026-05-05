@@ -11,8 +11,7 @@ import { IUpdatable } from './IUpdatable';
 import { IRenderable } from './IRenderable';
 import { Vector2, vec2 } from '@common/math/Vector2';
 import * as input from '@client/input';
-import manifest from '../../resources/manifest.json?raw';
-
+import manifest from './manifest.json?raw';
 
 export async function main () {
     const canvasManager = new CanvasManager(document.body);
