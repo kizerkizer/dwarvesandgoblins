@@ -33,7 +33,7 @@ class WtServer implements IMessagingServer {
 
     public static async create () {
         const server = createServer({
-            port: 8308,
+            port: process.env.WT_PORT ? parseInt(process.env.WT_PORT) : 8308,
             tls: {
                 certPem: await Bun.file(certPath!).text(),
                 keyPem: await Bun.file(keyPath!).text(),
@@ -126,19 +126,25 @@ export async function createHttpsServer () {
         throw new Error('CERT_PATH and KEY_PATH environment variables must be set');
     }
     const httpsServer = Bun.serve({
-        port: 8308,
+        port: process.env.HTTPS_PORT ? parseInt(process.env.HTTPS_PORT) : 8309,
         tls: {
             cert: await Bun.file(certPath).text(),
             key: await Bun.file(keyPath).text(),
         },
-        routes: {
-            '/': Bun.file('index.html'),
-            '/index.html': Bun.file('index.html'),
-            '/index.js': Bun.file('index.js'),
-            // TODO serve static assets like images, sounds, etc.
-        },
         fetch: async (request) => {
-            return new Response('Hello, World!');
+            const url = new URL(request.url);
+            if (url.pathname === '/') {
+                return new Response(Bun.file('index.html'));
+            } else if (url.pathname === '/index.html') {
+                return new Response(Bun.file('index.html'));
+            } else if (url.pathname === '/index.js') {
+                return new Response(Bun.file('index.js'));
+            } else if (url.pathname.startsWith('/resources/')) {
+                const resourcePath = url.pathname.substring('/resources/'.length);
+                return new Response(Bun.file(`resources/${resourcePath}`));
+            } else {
+                return new Response('Not found', { status: 404 });
+            }
         }
     });
     return httpsServer;

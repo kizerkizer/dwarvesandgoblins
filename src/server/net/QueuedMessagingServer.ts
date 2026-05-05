@@ -15,7 +15,7 @@ export interface INetMessage {
     data: JSONObject;
 }
 
-export interface INet {
+export interface IQueuedMessagingServer {
     queueSendMessage (identity: IMessagingServerIdentity, message: INetMessage): void;
     queueSendMessageReliably (identity: IMessagingServerIdentity, message: INetMessage): void;
     listen (listener: INetListener): number;
@@ -26,7 +26,7 @@ export interface INet {
     flushSendQueue (): void;
 }
 
-export class Net implements INet {
+export class QueuedMessagingServer implements IQueuedMessagingServer {
     private _messagingServer: IMessagingServer;
     private _connections: Map<string | number, IMessagingServerIdentity> = new Map();
     private _connectQueue: IMessagingServerIdentity[] = [];
@@ -120,9 +120,9 @@ export class Net implements INet {
 
 }
 
-export class GameNet implements INet {
+export class GameNet implements IQueuedMessagingServer {
     
-    constructor (private game: Game, private net: INet) {}
+    constructor (private game: Game, private net: IQueuedMessagingServer) {}
 
     queueSendMessage(identity: IMessagingServerIdentity, message: INetMessage): void {
         message.serverTick = this.game.currentTick;

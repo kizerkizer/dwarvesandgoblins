@@ -1,9 +1,16 @@
-import { createHttpsServer, createGameServer } from './net/server';
+import { QueuedMessagingServer } from './net/QueuedMessagingServer';
+import { createHttpsServer, createMessagingServer } from './net/server';
+import { Game } from './simulation/game';
+import { LoopDriver } from "@server/loop";
 
 async function main () {
     const httpsServer = await createHttpsServer();
-    const gameServer = await createGameServer();
-    console.log('Servers are running');
+    const messagingServer = await createMessagingServer();
+    const queuedMessagingServer = new QueuedMessagingServer(messagingServer);
+    const game = new Game(queuedMessagingServer);
+    const loopDriver = new LoopDriver(game);
+    loopDriver.start();
+    console.log('Game running');
 }
 
 main().catch((error) => {

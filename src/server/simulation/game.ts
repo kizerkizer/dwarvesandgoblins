@@ -2,7 +2,7 @@ import { Vector2, vec2, Rect, toFullAngle, clamp, radToDeg } from "@common/math"
 import { rect } from "@common/math/Rect";
 import { type GameId, nextId } from "@common/util";
 import { JSONObject } from "@common/util/json";
-import { INet, INetListener, GameNet } from "@server/net/net";
+import { IQueuedMessagingServer, INetListener, GameNet } from "@server/net/QueuedMessagingServer";
 import { IMessagingServerIdentity, IMessagingServerListener } from "@server/net/server";
 import { World } from "@server/simulation/world";
 
@@ -267,7 +267,7 @@ export class Game {
     private _world: World;
     private net: GameNet;
 
-    constructor (net: INet) {
+    constructor (net: IQueuedMessagingServer) {
         this.net = new GameNet(this, net);
         this._world = new World(this);
     }

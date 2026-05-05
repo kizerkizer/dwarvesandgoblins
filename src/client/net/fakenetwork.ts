@@ -1,4 +1,5 @@
-import { RNG, SeededRNG } from './rng';
+import { RNG, SeededRNG } from '../../common/math/rng';
+import { INetClient } from './net';
 
 export interface INetworkProfile {
     nextClientToServerDelay: () => number; // -1 indicates drop packet
@@ -119,6 +120,89 @@ export class FakeNetworkBridge {
     private dispatchMessage (message: string, handlers: ((message: string) => void)[]) {
         for (const handler of handlers) {
             handler(message);
+        }
+    }
+}
+
+export interface MockServer {
+    receiveMessage: (message: Uint8Array, client: MockNetClient) => void;
+    handleOpen: (client: MockNetClient) => void;
+    handleClose: (client: MockNetClient) => void;
+}
+
+export class MockServerImpl implements MockServer {
+    receiveMessage (message: Uint8Array, client: MockNetClient) {
+        // Handle message from client
+    }
+
+    handleOpen (client: MockNetClient) {
+        // Handle new client connection
+    }
+
+    handleClose (client: MockNetClient) {
+        // Handle client disconnection
+    }
+}
+
+export class MockNetClient implements INetClient {
+    private receiveHandlers: ((message: Uint8Array) => void)[] = []
+    private errorHandlers: ((error: Error) => void)[] = [];
+    private openHandlers: (() => void)[] = [];
+    private closeHandlers: (() => void)[] = [];
+    private connected: boolean = false;
+    private mockServer: MockServer;
+
+    constructor (mockServer: MockServer) {
+        this.mockServer = mockServer;
+    }
+
+    sendReliable(message: Uint8Array): void {
+        return this.send(message);
+    }
+
+    connect () {
+        this.connected = true;
+        this.mockServer.handleOpen(this);
+        for (const handler of this.openHandlers) {
+            handler();
+        }
+    }
+
+    get isConnected (): boolean {
+        return this.connected;
+    }
+
+    send (message: Uint8Array) {
+        this.mockServer.receiveMessage(message, this);
+    }
+
+    receiveMessage (message: Uint8Array) {
+        for (const handler of this.receiveHandlers) {
+            handler(message);
+        }
+    }
+
+    onReceive (handler: (message: Uint8Array) => void) {
+        this.receiveHandlers.push(handler);
+    }
+
+    onError (handler: (error: Error) => void) {
+        this.errorHandlers.push(handler);
+    }
+
+    onOpen (handler: () => void) {
+        this.openHandlers.push(handler);
+    }
+
+    onClose (handler: () => void) {
+        this.closeHandlers.push(handler);
+    }
+
+    close () {
+        this.connected = false;
+        this.mockServer.handleClose(this);
+        for (const handler of this.closeHandlers) {
+            handler();
         }
     }
 }
