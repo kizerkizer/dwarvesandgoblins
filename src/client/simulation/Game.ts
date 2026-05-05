@@ -1,11 +1,10 @@
-import 'dotenv/config';
-
 import { Vector2, vec2, Rect, toFullAngle, clamp, radToDeg } from "@common/math";
 import { type GameId, nextId } from "@common/util";
 import { TICK_DURATION } from "@client/looprunner";
 import { World } from "@client/simulation/world";
 import { createNetClient, INetClient } from "@client/net/net";
 import { JSONObject, parse } from '@common/util/json';
+import { WT_PORT, WT_URL } from "@client/config";
 
 export interface IEntityStats {
     health: number;
@@ -248,7 +247,7 @@ export class Game {
     constructor () {
         this._world = new World(this);
         this._player = new Player(this, 'player', 'player', this._world.origin.clone(), vec2(256, 256));
-        this._netClient = createNetClient(`${process.env.WT_URL!}:${process.env.WT_PORT!}`);
+        this._netClient = createNetClient(`${WT_URL}:${WT_PORT}`);
         this._netClient.onReceive((message) => this.handleNetworkMessage(parse(decoder.decode(message))));
     }
 
